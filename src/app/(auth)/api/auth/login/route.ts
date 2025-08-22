@@ -2,13 +2,15 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 
 export async function POST(request: Request) {
-    const {nombre, correo, passwordHash} = await request.json()
+    const { correo, passwordHash} = await request.json()
 
-    const loginRes = await fetch(`${process.env.SEGURIDAD_API_BASE}/Autenticacion`, {
+    const loginRes = await fetch(`${process.env.SEGURIDAD_API_BASE}/Autenticacion/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre, correo, passwordHash })
+        body: JSON.stringify({ correo, passwordHash })
     })
+
+    console.log({loginRes})
 
     if(!loginRes.ok) {
         const error = await loginRes.text()
@@ -23,35 +25,14 @@ export async function POST(request: Request) {
 
     const token = loginData.accessToken
 
-    const userRes = await fetch(`${process.env.SEGURIDAD_API_BASE}/Usuario/ObtenerUsuario`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ nombre, correo })
-    })
-
-    if(!userRes.ok) {
-        const cookieStore = await cookies()
-        cookieStore.set('access_token', token, {
-            httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 2
-        })
-
-        return NextResponse.json({ ok: true, roles: []})
-    }
-
-    const userData = await userRes.json()
-    const roles: string[] = Array.isArray(userData?.perfiles) ? userData.perfiles : []
-
     const cookieStore = await cookies()
     cookieStore.set('access_token', token, {
-        httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 2
+        httpOnly: true, 
+        secure: process.env.NODE_ENV === 'production', 
+        sameSite: 'lax', 
+        path: '/', 
+        maxAge: 60 * 60 * 2
     })
 
-    cookieStore.set('roles', JSON.stringify(roles), {
-        httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 2
-    })
-
-    return NextResponse.json({ ok: true, roles })
+    return NextResponse.json(loginData)
 }
