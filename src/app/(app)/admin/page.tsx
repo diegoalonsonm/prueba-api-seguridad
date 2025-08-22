@@ -1,0 +1,9 @@
+export default function Admin() {
+    return(
+        <div>
+            <h2>
+                admin page
+            </h2>
+        </div>
+    )
+}
