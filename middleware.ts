@@ -2,125 +2,68 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { jwtVerify } from 'jose'
 
-const ADMIN_ONLY = ['admin']
-const USER_ONLY = ['/app', '/perfil']
+const ADMIN_ONLY = ['/admin']
+const USER_ONLY  = ['/user', '/app']
 
 const ROLE_CLAIM = 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'
 
-async function verifyJWT(token: string){
-    // En desarrollo, vamos a decodificar sin verificar para diagnosticar
-    if (process.env.NODE_ENV === 'development') {
-        try {
-            console.log('=== JWT DEBUG (Development Mode) ===')
-            const [header, payload] = token.split('.')
-            const decodedHeader = JSON.parse(atob(header))
-            const decodedPayload = JSON.parse(atob(payload))
-            
-            console.log('JWT Header:', decodedHeader)
-            console.log('JWT Algorithm:', decodedHeader.alg)
-            console.log('=== SKIPPING VERIFICATION IN DEV MODE ===')
-            
-            // Retornar sin verificar en desarrollo
-            return { payload: decodedPayload }
-        } catch (e) {
-            console.error('Failed to decode JWT:', e)
-            throw e
-        }
-    }
-    
-    // En producción, intentar verificar normalmente
-    const secret = new TextEncoder().encode(process.env.JWT_PUBLIC_OR_SECRET!)
-    try {
-        const result = await jwtVerify(token, secret)
-        return result
-    } catch (error) {
-        console.error('JWT verification failed with provided secret:', error)
-        throw error
-    }
+async function verifyJwt(token: string) {
+    const secret = new TextEncoder().encode(process.env.JWT_PUBLIC_OR_SECRET)
+    return jwtVerify(token, secret)
 }
 
-export async function middleware(request: NextRequest) {
-    const {pathname} = request.nextUrl
+export async function middleware(req: NextRequest) {
+    const {pathname} = req.nextUrl
 
-    if (pathname.startsWith('/login') || pathname.startsWith('/register') || pathname.startsWith('/public') || pathname.startsWith('/_next') || pathname === '/') {
-        return NextResponse.next();
+    if(pathname === '/' || 
+       pathname.startsWith('/login') || 
+       pathname.startsWith('/register') || 
+       pathname.startsWith('/403') ||
+       pathname.startsWith('/_next') || 
+       pathname.startsWith('/api') ||
+       pathname.startsWith('/public')) {
+        return NextResponse.next()
     }
 
-    const token = request.cookies.get('access_token')?.value
-    
+    const token = req.cookies.get('access_token')?.value
+
     if(!token) {
-        const url = new URL('/login', request.url)
-        url.searchParams.set('next', pathname)
-        
-        return NextResponse.redirect(url)
+        return NextResponse.redirect(new URL('/login', req.url))
     }
 
     let roles: number[] = []
 
     try {
-        const {payload} = await verifyJWT(token)
-        
-        console.log('=== MIDDLEWARE DEBUG ===')
-        console.log('Full JWT Payload:', JSON.stringify(payload, null, 2))
-        console.log('Looking for claim:', ROLE_CLAIM)
-        console.log('Available claims:', Object.keys(payload))
-        
-        // Intentar diferentes formas de encontrar el rol
-        const raw = payload[ROLE_CLAIM] as string | string[] | number | number[] | undefined
-        
-        console.log('Raw role value:', raw, 'Type:', typeof raw)
-        
-        // También buscar otras posibles ubicaciones del rol
-        const alternativeClaims = [
-            'role',
-            'roles', 
-            'http://schemas.microsoft.com/ws/2008/06/identity/claims/role',
-            'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role'
-        ]
-        
-        for (const claim of alternativeClaims) {
-            if (payload[claim] !== undefined) {
-                console.log(`Found role in claim "${claim}":`, payload[claim])
-            }
-        }
+        const {payload} = await verifyJwt(token)
 
-        if (Array.isArray(raw)) {
-            roles = raw.map((role: string | number) => {
-                const roleNum = typeof role === 'string' ? parseInt(role, 10) : Number(role)
-                return Number.isFinite(roleNum) ? roleNum : 0
-            }).filter(role => role > 0)
-        } else if (raw != null) {
-            const roleNum = typeof raw === 'string' ? parseInt(raw, 10) : Number(raw)
-            
-            if (Number.isFinite(roleNum) && roleNum > 0) {
-                roles = [roleNum]
+        const raw = (payload as Record<string, unknown>)[ROLE_CLAIM]
+
+        if(Array.isArray(raw)) {
+            roles = raw.map((role: unknown) => Number(role)).filter(Number.isFinite)
+        } else  if (raw != null) {
+            const num = Number(raw)
+
+            if(Number.isFinite(num)) {
+                roles = [num]
             }
         }
-        
-        console.log('Final extracted roles:', roles)
-        console.log('Current pathname:', pathname)
-        console.log('=== END DEBUG ===')
-    } catch (error) {
-        console.error('JWT verification error:', error)
-        const url = new URL('/login', request.url)
+    } catch {
+        const url = new URL('/login', req.url)
         url.searchParams.set('next', pathname)
-        
         return NextResponse.redirect(url)
     }
 
-    if(ADMIN_ONLY.some(path => pathname.startsWith(path))) {
-        if(!roles.includes(1)) return NextResponse.redirect(new URL('/403', request.url))
+    if (ADMIN_ONLY.some((p: string) => pathname.startsWith(p)) && !roles.includes(1)) {
+        return NextResponse.redirect(new URL('/403', req.url));
     }
 
-    if(USER_ONLY.some(path => pathname.startsWith(path))) {
-        if(!roles.includes(2) || roles.includes(1)) {
-            return NextResponse.redirect(new URL('/403', request.url))
-        }
+    if (USER_ONLY.some((p: string) => pathname.startsWith(p)) && !(roles.includes(1) || roles.includes(2))) {
+        return NextResponse.redirect(new URL('/403', req.url));
     }
 
-    return NextResponse.next()
+    return NextResponse.next();
 }
 
 export const config = {
-    matcher: ['/((?!api).*)']
+  matcher: ['/((?!api|_next|favicon.ico).*)'], 
 }

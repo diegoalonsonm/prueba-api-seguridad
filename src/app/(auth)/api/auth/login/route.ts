@@ -1,6 +1,57 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 
+const ROLE_CLAIM = 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'
+
+function extractRolesFromJWT(token: string): number[] {
+    try {
+        const [, payload] = token.split('.')
+        const decodedPayload = JSON.parse(atob(payload))
+        
+        console.log('Extracting roles from JWT payload:', decodedPayload)
+        
+        let raw = decodedPayload[ROLE_CLAIM] as string | string[] | number | number[] | undefined
+        
+        if (raw === undefined) {
+            const alternativeClaims = [
+                'role',
+                'roles', 
+                'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role',
+                'https://schemas.microsoft.com/ws/2008/06/identity/claims/role'
+            ]
+            
+            for (const claim of alternativeClaims) {
+                if (decodedPayload[claim] !== undefined) {
+                    console.log(`Found role in claim "${claim}":`, decodedPayload[claim])
+                    raw = decodedPayload[claim] as string | string[] | number | number[] | undefined
+                    break
+                }
+            }
+        }
+
+        let roles: number[] = []
+
+        if (Array.isArray(raw)) {
+            roles = raw.map((role: string | number) => {
+                const roleNum = typeof role === 'string' ? parseInt(role, 10) : Number(role)
+                return Number.isFinite(roleNum) ? roleNum : 0
+            }).filter(role => role > 0)
+        } else if (raw != null) {
+            const roleNum = typeof raw === 'string' ? parseInt(raw, 10) : Number(raw)
+            
+            if (Number.isFinite(roleNum) && roleNum > 0) {
+                roles = [roleNum]
+            }
+        }
+        
+        console.log('Extracted roles from JWT:', roles)
+        return roles
+    } catch (error) {
+        console.error('Error extracting roles from JWT:', error)
+        return []
+    }
+}
+
 export async function POST(request: Request) {
     const { correo, passwordHash} = await request.json()
 
@@ -25,6 +76,8 @@ export async function POST(request: Request) {
 
     const token = loginData.accessToken
 
+    const roles = extractRolesFromJWT(token)
+
     const cookieStore = await cookies()
     cookieStore.set('access_token', token, {
         httpOnly: true, 
@@ -34,5 +87,8 @@ export async function POST(request: Request) {
         maxAge: 60 * 60 * 2
     })
 
-    return NextResponse.json(loginData)
+    return NextResponse.json({ 
+        ...loginData,
+        roles 
+    })
 }
