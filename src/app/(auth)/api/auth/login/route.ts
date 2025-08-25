@@ -87,6 +87,14 @@ export async function POST(request: Request) {
         maxAge: 60 * 60 * 2
     })
 
+    cookieStore.set('user_roles', JSON.stringify(roles), {
+        httpOnly: false, 
+        secure: process.env.NODE_ENV === 'production', 
+        sameSite: 'lax', 
+        path: '/', 
+        maxAge: 60 * 60 * 2
+    })
+
     return NextResponse.json({ 
         ...loginData,
         roles 

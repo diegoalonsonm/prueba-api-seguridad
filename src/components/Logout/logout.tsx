@@ -10,9 +10,26 @@ export function LogoutButton() {
     const handleLogout = async () => {
         setLoading(true)
 
-        await fetch('/api/auth/logout', { method: 'POST' })
-
-        router.push('/login')
+        try {
+            const res = await fetch('/api/auth/logout', { method: 'POST' })
+            
+            localStorage.removeItem('user_roles')
+            localStorage.removeItem('user_info')
+            
+            if (res.ok) {
+                router.push('/login')
+            } else {
+                console.error('Error en logout, pero redirigiendo de todos modos')
+                router.push('/login')
+            }
+        } catch (error) {
+            console.error('Error en logout:', error)
+            localStorage.removeItem('user_roles')
+            localStorage.removeItem('user_info')
+            router.push('/login')
+        } finally {
+            setLoading(false)
+        }
     }
 
     return (

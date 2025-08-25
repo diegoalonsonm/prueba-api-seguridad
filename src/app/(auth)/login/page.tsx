@@ -23,8 +23,7 @@ export default function LoginPage() {
     const onSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true)
-        setError('') // Limpiar errores previos
-
+        setError('') 
         try {
             const passwordHash = await sha256Hex(password)
 
@@ -42,7 +41,13 @@ export default function LoginPage() {
 
                 console.log('Login successful:', { data, roles })
 
-                // Redirigir basado en roles o usar la URL 'next' si está disponible
+                localStorage.setItem('user_roles', JSON.stringify(roles))
+                localStorage.setItem('user_info', JSON.stringify({
+                    roles,
+                    loginTime: new Date().toISOString(),
+                    validacionExitosa: data.validacionExitosa
+                }))
+
                 if(roles.includes(1)) {
                     router.push(next.startsWith('/admin') ? next : '/admin')
                 } else if(roles.includes(2)) {
